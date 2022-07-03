@@ -5,8 +5,12 @@ import chisel3.util._
 import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 import common.CurrentCycle
 
+// matadata for each cache block
 class Meta extends Bundle with CacheConfig {
+  // cache block data valid
   val valid = Bool()
+  // dirty: different data: cache and memory
+  // check valid and dirty before data replace
   val dirty = Bool()
   val address = UInt(addressWidth.W)
   val tag = UInt(tagBits.W)
@@ -19,6 +23,8 @@ class Cache1 extends Module with CacheConfig with CurrentCycle {
 
   val io = IO(new CacheIO)
 
+  // one set, one cache block
+  // width: blockSizeInBytes * 8 bits
   val dataArray = RegInit(VecInit(Seq.fill(numSets)(0.U((blockSizeInBytes * 8).W))))
   val metaArray = RegInit(VecInit(Seq.fill(numSets)(
     {
@@ -31,6 +37,10 @@ class Cache1 extends Module with CacheConfig with CurrentCycle {
     }
   )))
 
+  // Idle: Get any request (both read & write)
+  // ReadMiss: No required data in cache, fetch data from memory
+  // ReadData: Cache hit, or data fetched from memory
+  // WriteResponse: 
   val sIdle :: sReadMiss :: sReadData :: sWriteResponse :: Nil = Enum(4)
 
   val regState = RegInit(sIdle)
@@ -45,8 +55,10 @@ class Cache1 extends Module with CacheConfig with CurrentCycle {
   val tag = getTag(address)
   val index = getIndex(address)
 
+  // HIT cache!
   val hit = regState === sIdle && io.request.fire() && metaArray(index).valid && metaArray(index).tag === tag
 
+  // Calculate hit rate
   val regNumHits = RegInit(0.U(32.W))
 
   io.numHits := regNumHits
@@ -81,14 +93,17 @@ class Cache1 extends Module with CacheConfig with CurrentCycle {
       when(io.request.fire()) {
         addressReg := io.request.bits.address
 
+        // Read or Write?
         when(io.request.bits.writeEnable) {
           when(hit) {
+            // HIT
             regNumHits := regNumHits + 1.U
 
             dataArray(index) := io.request.bits.writeData
 
             regState := sWriteResponse
           }.otherwise {
+            // MISS
             when(metaArray(index).valid && metaArray(index).dirty) {
               writeback()
             }

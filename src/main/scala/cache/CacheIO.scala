@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
+// CPU request Cache
 class Request extends Bundle with CacheConfig {
   val address = UInt(addressWidth.W)
   val writeEnable = Bool()
@@ -15,6 +16,8 @@ class Response extends Bundle with CacheConfig {
 }
 
 class CacheIO extends Bundle with CacheConfig {
+  // Decoupled: from master device
+  // Flipped: flip input & output
   val request = Flipped(Decoupled(new Request))
   val response = Decoupled(new Response)
 

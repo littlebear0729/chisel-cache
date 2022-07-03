@@ -12,6 +12,7 @@ class Cache1Tester(dut: Cache1) extends PeekPokeTester(dut) {
     val numAccesses = 1024
 
     for (i <- 0 until numAccesses) {
+      // Tuple
       trace += ((i % 2 == 0, i * 16 % 256, (i + 1))) // TODO: generate your data here as you like
     }
     
