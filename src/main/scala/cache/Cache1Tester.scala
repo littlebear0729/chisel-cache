@@ -49,7 +49,10 @@ class Cache1Tester(dut: Cache1) extends PeekPokeTester(dut) {
       }
       
       // TODO: you can print or expect (validate) the response here
-
+      //?? Problem: readData keeps 0
+      if (trace(i)._1 == false) {
+        expect(dut.io.response.bits.readData, trace(i - 1)._3)
+      }
       step(1)
 
       // mark the response as not ready again
