@@ -62,7 +62,7 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
   val address = io.request.bits.address
 
   val tag = getTag(address)
-  val index = 0
+  val index: UInt = 0.U
 
   // HIT cache!
   // ??Problem
@@ -81,7 +81,7 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
 
   val addressReg = Reg(UInt(addressWidth.W))
   val tagReg = getTag(addressReg)
-  val indexReg = 0
+  val indexReg: UInt = 0.U
 
   val memory = Module(new Memory(dataWidth, 256))
 
@@ -100,20 +100,30 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
     memory.io.address := io.request.bits.address
   }
 
-  def findPos(): UInt = {
+  def findPos() {
+    // find a position in cache with given address and tag
+    var count = 0.U
     for (i <- 0 until assoc) {
-      if (addressReg == metaArray(i).address && tagReg == metaArray(i).tag) {
-        return i.U
+      count = count + 1.U
+      when(addressReg === metaArray(i).address && tagReg === metaArray(i).tag) {
+        return count
       }
     }
   }
 
-  def findEmptyPos(): UInt = {
+  def findEmptyPos() {
+    // find a empty position in order to write new data in
+    var count = 0.U
     for (i <- 0 until assoc) {
-      if (metaArray(i).cycle == 0.U) {
-        return i.U
+      count = count + 1.U
+      when(metaArray(i).cycle === 0.U) {
+        return count
       }
     }
+  }
+
+  def findOldPos() {
+    // find the oldest cache position to over-write
   }
 
   switch(regState) {
@@ -125,37 +135,43 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
 
         // Read or Write?
         when(io.request.bits.writeEnable) {
+          // Write
           when(hit) {
             // HIT
             regNumHits := regNumHits + 1.U
-            dataArray(findPos()) := io.request.bits.writeData
+            // dataArray(findPos()) := io.request.bits.writeData
+            // ---If write hit, write to exist cache block (and write back to memory).---
 
             regState := sWriteResponse
           }.otherwise {
             // MISS
+            // ---If write miss, find a avaliable(empty or oldest) cache block to write.---
             when(metaArray(index).valid && metaArray(index).dirty) {
               writeback()
             }
 
-            var idx = findEmptyPos()
-            metaArray(idx).valid := true.B
-            metaArray(idx).dirty := true.B
-            metaArray(idx).tag := tag
-            metaArray(idx).address := address
-            dataArray(idx) := io.request.bits.writeData
+
+            metaArray(index).valid := true.B
+            metaArray(index).dirty := true.B
+            metaArray(index).tag := tag
+            metaArray(index).address := address
+            dataArray(index) := io.request.bits.writeData
 
             regState := sWriteResponse
           }
         }.otherwise {
+          // Read
           when(hit) {
+            //HIT
             regNumHits := regNumHits + 1.U
 
             regState := sReadData
           }.otherwise {
+            //MISS
             when(metaArray(index).valid && metaArray(index).dirty) {
               writeback()
             }
-
+            //?? Problem
             refill()
 
             regState := sReadMiss
@@ -164,6 +180,7 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
       }
     }
     is(sReadMiss) {
+      // ---If read miss, read data from memory and save it to cache available block.---
       metaArray(indexReg).valid := true.B
       metaArray(indexReg).dirty := false.B
       metaArray(indexReg).tag := tagReg
@@ -173,6 +190,7 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
       regState := sReadData
     }
     is(sReadData) {
+      // ---Pass cached data from cache to response bits.---
       io.response.valid := true.B
       io.response.bits.readData := dataArray(indexReg)
 
