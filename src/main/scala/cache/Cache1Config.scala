@@ -4,12 +4,12 @@ import chisel3._
 import chisel3.util._
 import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
-trait CacheConfig {
+trait Cache1Config {
     val addressWidth = 32
 
     // 16 * 8 bits
     val blockSizeInBytes = 16
-    // 相连度
+    // 相联度
     // 1: 直接映射
     val assoc = 1 // 1~8
     // sets of caches

@@ -6,7 +6,7 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 import common.CurrentCycle
 
 // matadata for each cache block
-class Meta extends Bundle with CacheConfig {
+class Meta1 extends Bundle with Cache1Config {
   // cache block data valid
   val valid = Bool()
   // dirty: different data: cache and memory
@@ -16,7 +16,7 @@ class Meta extends Bundle with CacheConfig {
   val tag = UInt(tagBits.W)
 }
 
-class Cache1 extends Module with CacheConfig with CurrentCycle {
+class Cache1 extends Module with Cache1Config with CurrentCycle {
   scala.Predef.printf(s"indexBits: ${indexBits}, offsetBits: ${offsetBits}\n")
 
   assert(assoc == 1)
@@ -28,7 +28,7 @@ class Cache1 extends Module with CacheConfig with CurrentCycle {
   val dataArray = RegInit(VecInit(Seq.fill(numSets)(0.U((blockSizeInBytes * 8).W))))
   val metaArray = RegInit(VecInit(Seq.fill(numSets)(
     {
-      val meta = Wire(new Meta())
+      val meta = Wire(new Meta1())
       meta.valid := false.B
       meta.dirty := false.B
       meta.address := 0.U
@@ -159,8 +159,11 @@ class Cache1 extends Module with CacheConfig with CurrentCycle {
     }
   }
 
+  // chisel3.printf(
+  //   p"[${currentCycle}] regState: ${regState}, request.fire(): ${io.request.fire()}, response.fire(): ${io.response.fire()}, writeEnable: ${io.request.bits.writeEnable}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
+  // )
   chisel3.printf(
-    p"[$currentCycle] regState: ${regState}, request.fire(): ${io.request.fire()}, response.fire(): ${io.response.fire()}, writeEnable: ${io.request.bits.writeEnable}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
+    p"[${currentCycle}] regState: ${regState}, data: ${io.response.bits.readData}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
   )
 }
 
