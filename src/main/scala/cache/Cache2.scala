@@ -124,6 +124,11 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
 
   def findOldPos() {
     // find the oldest cache position to over-write
+    //?? Problem: cannot use tabulate?
+    val pos = Vec.tabulate(assoc) {i => metaArray(i).cycle}
+    val minPos = pos reduceLeft {(x,y) => Mux(x < y,x,y)}
+    val minPosidx = pos.indexWhere((x : UInt => x === minPos))
+    return minPosidx.U
   }
 
   switch(regState) {
@@ -139,8 +144,10 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
           when(hit) {
             // HIT
             regNumHits := regNumHits + 1.U
-            // dataArray(findPos()) := io.request.bits.writeData
             // ---If write hit, write to exist cache block (and write back to memory).---
+            // dataArray(findPos()) := io.request.bits.writeData
+            val idx = findPos()
+            dataArray(idx) := io.request.bits.writeData
 
             regState := sWriteResponse
           }.otherwise {
@@ -149,7 +156,6 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
             when(metaArray(index).valid && metaArray(index).dirty) {
               writeback()
             }
-
 
             metaArray(index).valid := true.B
             metaArray(index).dirty := true.B
