@@ -28,6 +28,10 @@ trait Cache3Config {
         return address(addressWidth - 1, indexBits + offsetBits)
     }
 
+    def getIndex(address: UInt): UInt = {
+        return address(indexBits + offsetBits - 1, offsetBits)
+    }
+    
     def getOffset(address: UInt): UInt = {
         return address(offsetBits - 1, 0)
     }

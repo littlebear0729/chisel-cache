@@ -6,7 +6,7 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 import common.CurrentCycle
 
 // matadata for each cache block
-class Meta3 extends Bundle with Cache2Config {
+class Meta3 extends Bundle with Cache3Config {
   // cache block data valid
   val valid = Bool()
   // dirty: different data between cache and memory
@@ -14,10 +14,11 @@ class Meta3 extends Bundle with Cache2Config {
   val dirty = Bool()
   val address = UInt(addressWidth.W)
   val tag = UInt(tagBits.W)
-  val counter = Counter()
+  // hit counter for LRU algorithm
+  val counter = UInt(32.W)
 }
 
-class Cache3 extends Module with Cache2Config with CurrentCycle {
+class Cache3 extends Module with Cache3Config with CurrentCycle {
   scala.Predef.printf(s"indexBits: ${indexBits}, offsetBits: ${offsetBits}\n")
 
   val io = IO(new CacheIO)
@@ -31,7 +32,7 @@ class Cache3 extends Module with Cache2Config with CurrentCycle {
     VecInit(
       Seq.fill(assoc * numSets)(
         {
-          val meta = Wire(new Meta2())
+          val meta = Wire(new Meta3())
           meta.valid := false.B
           meta.dirty := false.B
           meta.address := 0.U
@@ -63,10 +64,11 @@ class Cache3 extends Module with Cache2Config with CurrentCycle {
   val index = getIndex(address)
 
   // HIT cache!
-  // ??Problem
   var exist = false.B
   for (i <- 0 until assoc) {
-    exist = exist || (metaArray(i).valid && metaArray(i).tag === tag)
+    exist = exist || (metaArray(i.U * numSets.U + index).valid && metaArray(
+      i.U * numSets.U + index
+    ).tag === tag)
   }
   val hit = regState === sIdle && io.request.fire() && exist
 
@@ -98,35 +100,43 @@ class Cache3 extends Module with Cache2Config with CurrentCycle {
     memory.io.address := io.request.bits.address
   }
 
-  def findPos() {
+  def findPos(): UInt = {
     // find a position in cache with given address and tag
-    var count = 0.U
+    var idx = (0.U(32.W))
     for (i <- 0 until assoc) {
-      count = count + 1.U
-      when(addressReg === metaArray(i * numSets + index).address && tagReg === metaArray(i * numSets + index).tag) {
-        return count
+      when(metaArray(i.U * numSets.U + index).tag === tagReg) {
+        idx = i.U * numSets.U + index
       }
     }
+    // metaArray.indexWhere { m => m.tag === tagReg }
+    return idx
   }
 
-  def findEmptyPos() {
+  def findEmptyPos(): UInt = {
     // find a empty position in order to write new data in
-    var count = 0.U
+    var idx = (0.U(32.W))
     for (i <- 0 until assoc) {
-      count = count + 1.U
-      when(metaArray(i * numSets + index).cycle === 0.U) {
-        return count
+      when(metaArray(i.U * numSets.U + index).counter === 0.U) {
+        idx = i.U * numSets.U + index
       }
     }
+    // metaArray.indexWhere { m => m.counter === 0.U }
+    return idx
   }
 
-  def findOldPos() {
+  def findOldPos(): UInt = {
     // find the oldest cache position to over-write
-    //?? Problem: cannot use tabulate?
-    val pos = Vec.tabulate(assoc) {index => metaArray(index).count}
-    val minPos = pos reduceLeft {(x,y) => Mux(x < y,x,y)}
-    val minPosidx = pos.indexWhere((x : UInt => x === minPos))
-    return minPosidx.U
+    val minMeta = metaArray.reduceLeft { (x, y) =>
+      Mux(x.counter < y.counter, x, y)
+    }
+    var idx = (0.U(32.W))
+    for (i <- 0 until assoc) {
+      when(metaArray(i.U * numSets.U + index).counter === minMeta.counter) {
+        idx = i.U * numSets.U + index
+      }
+    }
+    // metaArray.indexWhere { m => m.counter === minMeta.counter }
+    return idx
   }
 
   switch(regState) {
@@ -142,25 +152,34 @@ class Cache3 extends Module with Cache2Config with CurrentCycle {
           when(hit) {
             // HIT
             regNumHits := regNumHits + 1.U
-            metaArray(index).counter.inc()
-            // ---If write hit, write to exist cache block (and write back to memory).---
-            // dataArray(findPos()) := io.request.bits.writeData
             val idx = findPos()
+            metaArray(idx).counter := metaArray(idx).counter + 1.U
+            // ---If write hit, write to exist cache block (and write back to memory).---
             dataArray(idx) := io.request.bits.writeData
 
             regState := sWriteResponse
           }.otherwise {
             // MISS
             // ---If write miss, find a avaliable(empty or oldest) cache block to write.---
-            when(metaArray(index).valid && metaArray(index).dirty) {
+            var idx = findPos()
+            when(metaArray(idx).valid && metaArray(idx).dirty) {
               writeback()
             }
-
-            metaArray(index).valid := true.B
-            metaArray(index).dirty := true.B
-            metaArray(index).tag := tag
-            metaArray(index).address := address
-            dataArray(index) := io.request.bits.writeData
+            
+            val idx2 = findEmptyPos()
+            when(idx2 === 0.U) {
+              idx = findOldPos()
+              when(metaArray(idx).valid && metaArray(idx).dirty) {
+                writeback()
+              }
+            }.otherwise {
+              idx = idx2
+            }
+            metaArray(idx).valid := true.B
+            metaArray(idx).dirty := true.B
+            metaArray(idx).tag := tag
+            metaArray(idx).address := address
+            dataArray(idx) := io.request.bits.writeData
 
             regState := sWriteResponse
           }
@@ -169,14 +188,16 @@ class Cache3 extends Module with Cache2Config with CurrentCycle {
           when(hit) {
             //HIT
             regNumHits := regNumHits + 1.U
-
+            val idx = findPos()
+            metaArray(idx).counter := metaArray(idx).counter + 1.U
             regState := sReadData
           }.otherwise {
             //MISS
-            when(metaArray(index).valid && metaArray(index).dirty) {
+            val idx = findPos()
+            when(metaArray(idx).valid && metaArray(idx).dirty) {
               writeback()
             }
-            //?? Problem
+
             refill()
 
             regState := sReadMiss
@@ -186,18 +207,26 @@ class Cache3 extends Module with Cache2Config with CurrentCycle {
     }
     is(sReadMiss) {
       // ---If read miss, read data from memory and save it to cache available block.---
-      metaArray(indexReg).valid := true.B
-      metaArray(indexReg).dirty := false.B
-      metaArray(indexReg).tag := tagReg
-      metaArray(indexReg).address := addressReg
-      dataArray(indexReg) := memory.io.readData
+      var idx = findPos()
+      val idx2 = findEmptyPos()
+      when(idx2 === 0.U) {
+        idx = findOldPos()
+      }.otherwise {
+        idx = idx2
+      }
+      metaArray(idx).valid := true.B
+      metaArray(idx).dirty := false.B
+      metaArray(idx).tag := tagReg
+      metaArray(idx).address := addressReg
+      dataArray(idx) := memory.io.readData
 
       regState := sReadData
     }
     is(sReadData) {
       // ---Pass cached data from cache to response bits.---
+      val idx = findPos()
       io.response.valid := true.B
-      io.response.bits.readData := dataArray(indexReg)
+      io.response.bits.readData := dataArray(idx)
 
       when(io.response.fire()) {
         regState := sIdle
