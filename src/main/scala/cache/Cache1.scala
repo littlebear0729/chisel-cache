@@ -17,7 +17,7 @@ class Meta1 extends Bundle with Cache1Config {
 }
 
 class Cache1 extends Module with Cache1Config with CurrentCycle {
-  scala.Predef.printf(s"indexBits: ${indexBits}, offsetBits: ${offsetBits}\n")
+  scala.Predef.printf(s"tagBits: ${tagBits}, indexBits: ${indexBits}, offsetBits: ${offsetBits}\n")
 
   assert(assoc == 1)
 
@@ -159,12 +159,12 @@ class Cache1 extends Module with Cache1Config with CurrentCycle {
     }
   }
 
-  // chisel3.printf(
-  //   p"[${currentCycle}] regState: ${regState}, request.fire(): ${io.request.fire()}, response.fire(): ${io.response.fire()}, writeEnable: ${io.request.bits.writeEnable}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
-  // )
   chisel3.printf(
-    p"[${currentCycle}] regState: ${regState}, data: ${io.response.bits.readData}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
+    p"[${currentCycle}] regState: ${regState}, request.fire(): ${io.request.fire()}, response.fire(): ${io.response.fire()}, writeEnable: ${io.request.bits.writeEnable}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
   )
+  // chisel3.printf(
+  //   p"[${currentCycle}] regState: ${regState}, data: ${io.response.bits.readData}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
+  // )
 }
 
 object Cache1 extends App {

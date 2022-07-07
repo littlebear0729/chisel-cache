@@ -18,7 +18,7 @@ class Meta2 extends Bundle with Cache2Config {
 }
 
 class Cache2 extends Module with Cache2Config with CurrentCycle {
-  scala.Predef.printf(s"indexBits: ${indexBits}, offsetBits: ${offsetBits}\n")
+  scala.Predef.printf(s"tagBits: ${tagBits}, indexBits: ${indexBits}, offsetBits: ${offsetBits}\n")
 
   // assert(assoc == 1)
 
@@ -79,7 +79,7 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
 
   val addressReg = Reg(UInt(addressWidth.W))
   val tagReg = getTag(addressReg)
-  val indexReg: UInt = 0.U
+  val indexReg = findPos()
 
   val memory = Module(new Memory(dataWidth, 256))
 
@@ -142,7 +142,7 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
             }
 
             val idx2 = findEmptyPos()
-            when(idx2 === 0.U) {
+            when(idx2 === assoc.U - 1.U) {
               // If not empty position found, over-write the oldest data
               idx = findOldPos()
               when(metaArray(idx).valid && metaArray(idx).dirty) {
@@ -184,28 +184,18 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
     }
     is(sReadMiss) {
       // ---If read miss, read data from memory and save it to cache available block.---
-      var idx = findPos()
-      val idx2 = findEmptyPos()
-      when(idx2 === 0.U) {
-        // If not empty position found, over-write the oldest data
-        idx = findOldPos()
-      }.otherwise {
-        // Use empty position
-        idx = idx2
-      }
-      metaArray(idx).valid := true.B
-      metaArray(idx).dirty := false.B
-      metaArray(idx).tag := tagReg
-      metaArray(idx).address := addressReg
-      dataArray(idx) := memory.io.readData
+      metaArray(indexReg).valid := true.B
+      metaArray(indexReg).dirty := false.B
+      metaArray(indexReg).tag := tagReg
+      metaArray(indexReg).address := addressReg
+      dataArray(indexReg) := memory.io.readData
 
       regState := sReadData
     }
     is(sReadData) {
       // ---Pass cached data from cache to response bits.---
-      val idx = findPos()
       io.response.valid := true.B
-      io.response.bits.readData := dataArray(idx)
+      io.response.bits.readData := dataArray(indexReg)
 
       when(io.response.fire()) {
         regState := sIdle
@@ -220,14 +210,14 @@ class Cache2 extends Module with Cache2Config with CurrentCycle {
     }
   }
 
-  chisel3.printf(
-    p"[${currentCycle}] regState: ${regState}, request.fire(): ${io.request
-      .fire()}, response.fire(): ${io.response
-      .fire()}, writeEnable: ${io.request.bits.writeEnable}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
-  )
   // chisel3.printf(
-  //   p"[${currentCycle}] regState: ${regState}, data: ${io.response.bits.readData}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
+  //   p"[${currentCycle}] regState: ${regState}, request.fire(): ${io.request
+  //     .fire()}, response.fire(): ${io.response
+  //     .fire()}, writeEnable: ${io.request.bits.writeEnable}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
   // )
+  chisel3.printf(
+    p"[${currentCycle}] regState: ${regState}, data: ${io.response.bits.readData}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
+  )
 }
 
 object Cache2 extends App {

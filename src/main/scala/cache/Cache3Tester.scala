@@ -16,7 +16,7 @@ class Cache3Tester(dut: Cache3) extends PeekPokeTester(dut) {
     trace += (
       (
         i % 2 == 0,
-        i * 16 % 256,
+        i * 32 % 256,
         (i + 1)
       )
     ) // TODO: generate your data here as you like

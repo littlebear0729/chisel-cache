@@ -19,7 +19,7 @@ class Meta3 extends Bundle with Cache3Config {
 }
 
 class Cache3 extends Module with Cache3Config with CurrentCycle {
-  scala.Predef.printf(s"indexBits: ${indexBits}, offsetBits: ${offsetBits}\n")
+  scala.Predef.printf(s"tagBits: ${tagBits}, indexBits: ${indexBits}, offsetBits: ${offsetBits}\n")
 
   val io = IO(new CacheIO)
 
@@ -43,7 +43,6 @@ class Cache3 extends Module with Cache3Config with CurrentCycle {
       )
     )
   )
-  val currentBlock = RegInit(0.U)
 
   // Idle: Get any request (both read & write)
   // ReadMiss: No required data in cache, fetch data from memory
@@ -102,25 +101,19 @@ class Cache3 extends Module with Cache3Config with CurrentCycle {
 
   def findPos(): UInt = {
     // find a position in cache with given address and tag
-    var idx = (0.U(32.W))
+    var idx = 0.U
     for (i <- 0 until assoc) {
-      when(metaArray(i.U * numSets.U + index).tag === tagReg) {
-        idx = i.U * numSets.U + index
-      }
+      idx = Mux(metaArray(i.U * numSets.U + index).tag === tagReg, i.U * numSets.U + index, idx)
     }
-    // metaArray.indexWhere { m => m.tag === tagReg }
     return idx
   }
 
   def findEmptyPos(): UInt = {
     // find a empty position in order to write new data in
-    var idx = (0.U(32.W))
+    var idx = 0.U
     for (i <- 0 until assoc) {
-      when(metaArray(i.U * numSets.U + index).counter === 0.U) {
-        idx = i.U * numSets.U + index
-      }
+      idx = Mux(metaArray(i.U * numSets.U + index).counter === 0.U, i.U * numSets.U + index, idx)
     }
-    // metaArray.indexWhere { m => m.counter === 0.U }
     return idx
   }
 
@@ -129,13 +122,10 @@ class Cache3 extends Module with Cache3Config with CurrentCycle {
     val minMeta = metaArray.reduceLeft { (x, y) =>
       Mux(x.counter < y.counter, x, y)
     }
-    var idx = (0.U(32.W))
+    var idx = 0.U
     for (i <- 0 until assoc) {
-      when(metaArray(i.U * numSets.U + index).counter === minMeta.counter) {
-        idx = i.U * numSets.U + index
-      }
+      idx = Mux(metaArray(i.U * numSets.U + index).counter === minMeta.counter, i.U * numSets.U + index, idx)
     }
-    // metaArray.indexWhere { m => m.counter === minMeta.counter }
     return idx
   }
 
@@ -207,18 +197,18 @@ class Cache3 extends Module with Cache3Config with CurrentCycle {
     }
     is(sReadMiss) {
       // ---If read miss, read data from memory and save it to cache available block.---
-      var idx = findPos()
-      val idx2 = findEmptyPos()
-      when(idx2 === 0.U) {
-        idx = findOldPos()
-      }.otherwise {
-        idx = idx2
-      }
-      metaArray(idx).valid := true.B
-      metaArray(idx).dirty := false.B
-      metaArray(idx).tag := tagReg
-      metaArray(idx).address := addressReg
-      dataArray(idx) := memory.io.readData
+      // var idx = findPos()
+      // val idx2 = findEmptyPos()
+      // when(idx2 === 0.U) {
+      //   idx = findOldPos()
+      // }.otherwise {
+      //   idx = idx2
+      // }
+      metaArray(indexReg).valid := true.B
+      metaArray(indexReg).dirty := false.B
+      metaArray(indexReg).tag := tagReg
+      metaArray(indexReg).address := addressReg
+      dataArray(indexReg) := memory.io.readData
 
       regState := sReadData
     }
@@ -226,7 +216,7 @@ class Cache3 extends Module with Cache3Config with CurrentCycle {
       // ---Pass cached data from cache to response bits.---
       val idx = findPos()
       io.response.valid := true.B
-      io.response.bits.readData := dataArray(idx)
+      io.response.bits.readData := dataArray(indexReg)
 
       when(io.response.fire()) {
         regState := sIdle
@@ -244,7 +234,7 @@ class Cache3 extends Module with Cache3Config with CurrentCycle {
   chisel3.printf(
     p"[${currentCycle}] regState: ${regState}, request.fire(): ${io.request
       .fire()}, response.fire(): ${io.response
-      .fire()}, writeEnable: ${io.request.bits.writeEnable}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}, currentBlock: ${currentBlock}\n"
+      .fire()}, writeEnable: ${io.request.bits.writeEnable}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
   )
   // chisel3.printf(
   //   p"[${currentCycle}] regState: ${regState}, data: ${io.response.bits.readData}, address: ${io.request.bits.address}, tag: ${tag}, index: ${index}, hit: ${hit}, regNumHits: ${regNumHits}\n"
@@ -255,7 +245,7 @@ object Cache3 extends App {
   (new ChiselStage).execute(
     Array("-X", "verilog", "-td", "source/"),
     Seq(
-      ChiselGeneratorAnnotation(() => new Cache2())
+      ChiselGeneratorAnnotation(() => new Cache3())
     )
   )
 }
